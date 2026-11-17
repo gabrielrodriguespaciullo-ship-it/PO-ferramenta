@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Solucionador de PO</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+/* Layout: cabeçalho + abas por tipo; cada aba = dados (esq.) | resultado (dir.), e embaixo modelo/relatórios/Excel em sub-abas.
+   Mesma família visual dos dashboards das Listas 5 e 6: azul = dados digitados, laranja = solução. */
+:root {
+  --bg: #EBEFF2; --surface: #FFFFFF; --sunken: #F4F6F8; --ink: #14202B; --muted: #5A6875; --line: #C9D2DA; --line-soft: #E1E6EB;
+  --data: #24658F; --data-soft: #DCEAF3; --flow: #D9581C; --flow-soft: #FBE4D6; --good: #23794C; --good-soft: #DDF0E5; --bad: #B4322A; --bad-soft: #F7DEDB; --diag: #FFF3B0;
+  --f-display: "Barlow Condensed", "Arial Narrow", Arial, sans-serif; --f-body: "Barlow", "Segoe UI", Arial, sans-serif; --f-mono: "JetBrains Mono", Consolas, monospace; --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0E151C; --surface: #16202A; --sunken: #111A22; --ink: #E4EAF0; --muted: #94A3B1; --line: #2C3B48; --line-soft: #22303C;
+  --data: #72B5DE; --data-soft: #183447; --flow: #FF8B4E; --flow-soft: #3C2215; --good: #5CCB8E; --good-soft: #15342A; --bad: #F2847A; --bad-soft: #3E1D1B; --diag: #3A3418; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0E151C; --surface: #16202A; --sunken: #111A22; --ink: #E4EAF0; --muted: #94A3B1; --line: #2C3B48; --line-soft: #22303C;
+  --data: #72B5DE; --data-soft: #183447; --flow: #FF8B4E; --flow-soft: #3C2215; --good: #5CCB8E; --good-soft: #15342A; --bad: #F2847A; --bad-soft: #3E1D1B; --diag: #3A3418; color-scheme: dark }
+* { box-sizing: border-box }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.5; margin: 0 }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg) }
+.wrap { max-width: 1280px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 0 48px }
+header.top { padding-block: 24px 12px; display: flex; flex-wrap: wrap; align-items: end; justify-content: space-between; gap: 10px 24px }
+.brand-k { font-family: var(--f-display); font-weight: 600; letter-spacing: .14em; text-transform: uppercase; font-size: 13px; color: var(--muted) }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(30px, 4.4vw, 44px); line-height: 1; margin: 4px 0 0 }
+h1 .dot { color: var(--flow) }
+.top-note { color: var(--muted); font-size: 14px; max-width: 52ch; margin: 0 }
+nav#tabs { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; display: flex; gap: 6px; overflow-x: auto; padding-block: 10px; background: var(--bg); border-bottom: 1px solid var(--line) }
+.tab { flex: none; display: flex; flex-direction: column; align-items: flex-start; border: 1px solid var(--line); background: var(--surface); color: var(--ink); border-radius: 8px; padding: 6px 14px 7px; cursor: pointer; font: inherit; min-width: 90px }
+.tab:hover { border-color: var(--data) } .tab.on { background: var(--ink); color: var(--bg); border-color: var(--ink) }
+.tab-k { font-family: var(--f-display); font-weight: 700; font-size: 20px; line-height: 1.05 } .tab-l { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; opacity: .8; white-space: nowrap }
+:focus-visible { outline: 2px solid var(--flow); outline-offset: 2px }
+main { padding-top: 20px; display: grid; gap: 16px }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(24px, 3vw, 32px); line-height: 1.1; margin: 0; text-wrap: balance }
+h3 { font-family: var(--f-display); font-weight: 600; font-size: 19px; letter-spacing: .02em; margin: 0 }
+h4 { font-family: var(--f-display); font-weight: 600; font-size: 16px; margin: 12px 0 6px; letter-spacing: .02em }
+.head { display: flex; justify-content: space-between; align-items: end; gap: 12px; flex-wrap: wrap }
+.head-act { display: flex; gap: 8px; flex-wrap: wrap }
+.eyebrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-family: var(--f-display); font-weight: 600; letter-spacing: .1em; text-transform: uppercase; font-size: 14px; color: var(--muted); margin-bottom: 4px }
+.chip { font-size: 11px; font-weight: 600; letter-spacing: .05em; text-transform: none; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); color: var(--muted); font-family: var(--f-body) }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; display: flex; flex-direction: column }
+.ph { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 14px; border-bottom: 1px solid var(--line-soft) }
+.lp-grid { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 16px; align-items: start }
+.ed { padding: 12px 14px 14px; display: grid; gap: 8px; min-width: 0 }
+.steps { display: flex; gap: 10px 18px; flex-wrap: wrap; align-items: center }
+.step { display: inline-flex; align-items: center; gap: 6px; font-weight: 600 }
+.step-l { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.sb { width: 30px; height: 30px; border-radius: 7px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); font: inherit; font-size: 18px; line-height: 1; cursor: pointer }
+.sb:hover { border-color: var(--data) } .step-v { min-width: 22px; text-align: center; font-family: var(--f-mono) }
+.dfield { display: inline-flex; gap: 8px; align-items: center; font-size: 13px; color: var(--muted) }
+.tw { overflow-x: auto; min-width: 0 }
+table { border-collapse: collapse; font-variant-numeric: tabular-nums }
+.grid th, .grid td { padding: 3px; border: 1px solid var(--line-soft); text-align: center }
+.grid th { background: var(--sunken); font-weight: 600; font-size: 13px }
+.grid th.corner { font-size: 11px; color: var(--muted); padding: 4px 8px; white-space: nowrap }
+.grid th.hd-of { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; padding: 4px 8px; white-space: nowrap }
+.grid th.lbl { padding: 4px 10px; font-family: var(--f-mono) }
+.grid td.diag { background: var(--diag) } .zero { font-family: var(--f-mono); color: var(--muted) }
+.grid td.ck input { width: 18px; height: 18px } .grid.small td, .grid.small th { text-align: left }
+.ni { width: 74px; font: inherit; font-family: var(--f-mono); font-size: 14px; text-align: right; color: var(--data); background: var(--data-soft); border: 1.5px solid transparent; border-radius: 6px; padding: 4px 6px }
+.ni.sup { background: var(--flow-soft); color: var(--ink) } .ni::placeholder { color: var(--muted); opacity: .7 }
+.ni:hover, .ti:hover { border-color: var(--data) } .ni:focus, .ti:focus { outline: none; border-color: var(--data); background: var(--surface) }
+.ti { width: 64px; font: inherit; font-weight: 600; font-size: 14px; text-align: center; color: var(--ink); background: var(--sunken); border: 1.5px solid transparent; border-radius: 6px; padding: 4px 6px }
+.sel { font: inherit; font-size: 14px; padding: 4px 6px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink) }
+td.bal { font-family: var(--f-mono); font-size: 12px; white-space: nowrap; padding: 4px 8px } td.bal.ok { color: var(--good) } td.bal.warn { color: var(--bad); font-weight: 700 }
+.x { width: 28px; height: 28px; border: 1px solid var(--line); background: transparent; color: var(--muted); border-radius: 6px; cursor: pointer; font-size: 16px }
+.x:hover { color: var(--bad); border-color: var(--bad) }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px } .two .ghost { margin-top: 6px }
+.hint { font-size: 12.5px; color: var(--muted); margin: 4px 0 0 } .muted { color: var(--muted) }
+.ghost { font: inherit; font-size: 13.5px; font-weight: 500; background: transparent; color: var(--ink); border: 1px solid var(--line); border-radius: 7px; padding: 5px 11px; cursor: pointer }
+.ghost:hover { border-color: var(--ink) }
+.solve { font: inherit; font-weight: 600; font-size: 14px; background: var(--flow); color: #fff; border: 0; border-radius: 7px; padding: 7px 16px; cursor: pointer }
+.solve:hover { filter: brightness(1.05) }
+.res > div#res, #fres { padding: 12px 14px 14px; display: grid; gap: 10px; min-width: 0 }
+.kpi { border: 1px solid var(--line-soft); border-top: 4px solid var(--flow); border-radius: 8px; padding: 10px 14px; background: var(--sunken) }
+.kpi.bad { border-top-color: var(--bad) }
+.kpi-l { font-size: 12px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase; color: var(--muted) }
+.kpi-v { font-family: var(--f-display); font-weight: 700; font-size: 44px; line-height: 1.05; color: var(--flow) }
+.kpi-s { font-size: 14px } .pill { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 10px; border-radius: 99px; background: var(--good-soft); color: var(--good) }
+.nota { background: var(--flow-soft); border-radius: 8px; padding: 8px 12px; font-size: 13.5px; margin: 0 }
+.sol th, .sol td { border: 1px solid var(--line-soft); padding: 4px 9px; text-align: right; font-family: var(--f-mono); font-size: 13.5px }
+.sol th { background: var(--sunken); font-family: var(--f-body); text-align: center } .sol th.corner { font-size: 11px; color: var(--muted) }
+.sol td.on { background: var(--flow-soft); color: var(--flow); font-weight: 700 } .sol td.dg { background: var(--diag); color: var(--muted) }
+.sol td.na { color: var(--line) } .sol td.tot { font-weight: 600 } .sol tr.tr td { border-top: 2px solid var(--line) }
+.leitura h4 { margin-top: 2px } .leitura p { margin: 4px 0 } .leitura ul { margin: 4px 0 0 18px; padding: 0; font-family: var(--f-mono); font-size: 13px }
+.seg { display: inline-flex; flex-wrap: wrap; gap: 3px; border: 1px solid var(--line); border-radius: 9px; padding: 3px }
+.seg-b { font: inherit; font-weight: 600; font-size: 14px; border: 0; border-radius: 7px; padding: 6px 12px; background: transparent; color: var(--muted); cursor: pointer }
+.seg-b.on { background: var(--ink); color: var(--bg) } .seg-b:not(.on):hover { color: var(--ink) }
+.subbody { padding: 12px 16px 16px; min-width: 0 }
+.model { font-family: var(--f-mono); font-size: 14px; line-height: 1.75; background: var(--sunken); border-radius: 8px; padding: 12px 16px; overflow-x: auto; margin-bottom: 10px }
+.model p { margin: 0 } .model .mh { font-family: var(--f-display); font-weight: 700; font-size: 15px; letter-spacing: .06em; text-transform: uppercase; color: var(--data); margin-top: 8px }
+.model .mg { font-family: var(--f-body); font-size: 12.5px; color: var(--muted); margin-top: 6px } .model .mr { padding-left: 14px }
+.model .fo { font-weight: 600 } .model .rn { color: var(--muted); font-size: 12px; font-family: var(--f-body) } .model .hint { font-family: var(--f-body) }
+.rep-t { color: var(--data) }
+.rep { width: 100%; font-size: 13.5px } .rep th, .rep td { border: 1px solid var(--line-soft); padding: 4px 9px; text-align: left; white-space: nowrap }
+.rep th { background: var(--sunken); font-size: 12px; color: var(--muted); font-weight: 600 } .rep td.n { text-align: right; font-family: var(--f-mono) }
+.rep td.st.on { color: var(--flow); font-weight: 600 }
+.help { background: var(--sunken); border-radius: 8px; padding: 8px 12px; margin-top: 10px; font-size: 13.5px } .help p { margin: 4px 0 }
+.steps-x { margin: 0 0 12px 18px; padding: 0 } .steps-x li { margin: 4px 0 }
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 6px 14px; padding: 12px 14px }
+.fld { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 3px 0; border-bottom: 1px dashed var(--line-soft) }
+.fl { font-size: 14px } .fr { display: flex; align-items: center; gap: 6px; flex: none } .fu { font-size: 12px; color: var(--muted); min-width: 48px }
+.cond { margin: 0 14px 12px; padding: 7px 12px; border-radius: 8px; font-size: 14px } .cond.ok { background: var(--good-soft); color: var(--good) } .cond.bad { background: var(--bad-soft); color: var(--bad) }
+#fres .rep td { white-space: normal } td.fx, .fx { font-family: var(--f-mono); font-size: 12.5px; color: var(--muted) } td.val, .val { font-family: var(--f-mono); font-weight: 600; color: var(--flow) }
+.val.big { font-size: 16px }
+.helpers { margin: 0 14px 14px; border: 1px solid var(--line-soft); border-radius: 8px; padding: 6px 10px } .helpers summary { cursor: pointer; font-weight: 600; padding: 4px 0 }
+details.panel.helpers { margin: 0; padding: 10px 14px }
+.hrow { border-top: 1px dashed var(--line-soft); padding: 8px 0 } .hrow .fields { padding: 4px 0 } .ht { margin: 0; font-size: 13.5px; font-weight: 600 }
+.hact { display: flex; gap: 8px; align-items: center; flex-wrap: wrap } .hres { font-family: var(--f-mono); font-size: 13px; color: var(--flow); flex: 1 }
+.ta { width: 100%; font: inherit; font-size: 14px; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--surface); color: var(--ink); resize: vertical }
+.addrow { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 12px 14px } .pbox { display: inline-flex; gap: 8px; flex-wrap: wrap } .pl { display: inline-flex; gap: 4px; align-items: center; font-size: 13px; color: var(--muted) }
+#fitems { padding: 0 14px 14px; display: grid; gap: 8px }
+.item { border: 1px solid var(--line-soft); border-left: 4px solid var(--flow); border-radius: 8px; padding: 8px 12px; background: var(--sunken) }
+.it-h { display: flex; justify-content: space-between; gap: 8px; align-items: start }
+footer { margin-top: 28px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 12px }
+@media (max-width: 960px) { .lp-grid, .two { grid-template-columns: minmax(0, 1fr) } }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <div><div class="brand-k">Pesquisa Operacional · Transporte e Filas</div>
+      <h1>Solucionador de PO<span class="dot">.</span></h1></div>
+    <p class="top-note">Escolha o tipo, ajuste o tamanho do quadro e digite os dados. O site resolve pelo simplex, escreve o modelo para copiar e gera os relatórios de Respostas e de Sensibilidade, como o Solver do Excel.</p>
+  </header>
+  <nav id="tabs" aria-label="Tipos de problema"></nav>
+  <main id="main"></main>
+  <footer>Simplex de duas fases calculado no navegador. Em problemas com mais de uma solução ótima (comum em transporte), a distribuição e os preços-sombra podem diferir dos do Excel, com o mesmo valor ótimo. A planilha .xlsx baixada já vem com o Solver configurado para gerar os relatórios oficiais.</footer>
+</div>
+<script>
+/* ===== Simplex de duas fases com análise de sensibilidade (estilo Solver do Excel) ===== */
+const INF = 1e30;
+function solveLP(P) {
+  // P = { c:[], sense:'min'|'max', rows:[{coef:[], rel:'<='|'='|'>=', rhs:number}] }
+  const EPS = 1e-9, n = P.c.length, m = P.rows.length;
+  const A = [], b = [], rel = [], flip = [];
+  P.rows.forEach(r => { let co = r.coef.slice(), rh = r.rhs, rl = r.rel, f = 1;
+    if (rh < 0) { co = co.map(v => -v); rh = -rh; rl = rl === "<=" ? ">=" : rl === ">=" ? "<=" : "="; f = -1; }
+    A.push(co); b.push(rh); rel.push(rl); flip.push(f); });
+  let nS = 0, nA = 0; rel.forEach(r => { if (r !== "=") nS++; if (r !== "<=") nA++; });
+  const N = n + nS + nA, T = [], basis = [], art = new Set(), idc = [];
+  let s = n, a = n + nS;
+  for (let i = 0; i < m; i++) {
+    const row = new Array(N + 1).fill(0);
+    for (let j = 0; j < n; j++) row[j] = A[i][j] || 0;
+    row[N] = b[i];
+    if (rel[i] === "<=") { row[s] = 1; idc.push(s); basis.push(s++); }
+    else if (rel[i] === ">=") { row[s++] = -1; row[a] = 1; art.add(a); idc.push(a); basis.push(a++); }
+    else { row[a] = 1; art.add(a); idc.push(a); basis.push(a++); }
+    T.push(row);
+  }
+  const pivot = (r, k) => { const p = T[r][k];
+    for (let j = 0; j <= N; j++) T[r][j] /= p;
+    for (let i = 0; i < m; i++) if (i !== r && Math.abs(T[i][k]) > EPS) { const f = T[i][k]; for (let j = 0; j <= N; j++) T[i][j] -= f * T[r][j]; }
+    basis[r] = k; };
+  const redc = (cost, j) => { let d = cost[j]; for (let i = 0; i < m; i++) d -= cost[basis[i]] * T[i][j]; return d; };
+  const run = (cost, banned) => {
+    for (let it = 0; it < 20000; it++) {
+      let k = -1;
+      for (let j = 0; j < N; j++) { if ((banned && banned.has(j)) || basis.includes(j)) continue; if (redc(cost, j) < -EPS) { k = j; break; } }
+      if (k < 0) return "optimal";
+      let r = -1, best = Infinity;
+      for (let i = 0; i < m; i++) if (T[i][k] > EPS) { const q = T[i][N] / T[i][k];
+        if (q < best - EPS || (Math.abs(q - best) <= EPS && basis[i] < basis[r])) { best = q; r = i; } }
+      if (r < 0) return "unbounded";
+      pivot(r, k);
+    }
+    return "limit";
+  };
+  if (nA) {
+    const c1 = new Array(N).fill(0); art.forEach(j => c1[j] = 1);
+    run(c1);
+    let w = 0; for (let i = 0; i < m; i++) if (art.has(basis[i])) w += T[i][N];
+    if (w > 1e-7) return { status: "infeasible" };
+    for (let i = 0; i < m; i++) if (art.has(basis[i])) { for (let j = 0; j < n + nS; j++) if (Math.abs(T[i][j]) > EPS) { pivot(i, j); break; } }
+  }
+  const sg = P.sense === "max" ? -1 : 1;
+  const c2 = new Array(N).fill(0); for (let j = 0; j < n; j++) c2[j] = sg * P.c[j];
+  const st = run(c2, art);
+  if (st !== "optimal") return { status: st };
+  const clean = v => Math.abs(v) < 1e-9 ? 0 : Math.round(v * 1e9) / 1e9;
+  const x = new Array(n).fill(0), isBasic = new Array(N).fill(false), rowOf = new Array(N).fill(-1);
+  for (let i = 0; i < m; i++) { isBasic[basis[i]] = true; rowOf[basis[i]] = i; if (basis[i] < n) x[basis[i]] = clean(T[i][N]); }
+  const z = clean(x.reduce((t, v, j) => t + v * P.c[j], 0));
+  // Duais internos y_i = c_B · B^-1(:, i)
+  const y = []; for (let i = 0; i < m; i++) { let v = 0; for (let r = 0; r < m; r++) v += c2[basis[r]] * T[r][idc[i]]; y.push(v); }
+  const shadow = y.map((v, i) => clean(sg * v * flip[i]));
+  const lhs = P.rows.map(r => clean(r.coef.reduce((t, cf, j) => t + (cf || 0) * x[j], 0)));
+  const slack = P.rows.map((r, i) => clean(r.rel === "=" ? 0 : Math.abs(r.rhs - lhs[i])));
+  const reduced = P.c.map((cj, j) => isBasic[j] ? 0 : clean(cj - P.rows.reduce((t, r, i) => t + shadow[i] * (r.coef[j] || 0), 0)));
+  // Faixas dos coeficientes da função objetivo
+  const dk = []; for (let k = 0; k < N; k++) dk.push(art.has(k) || isBasic[k] ? null : redc(c2, k));
+  const objRange = P.c.map((cj, j) => {
+    let up, down;
+    if (!isBasic[j]) { up = INF; down = Math.max(0, dk[j]); }
+    else { const r = rowOf[j]; up = INF; down = INF;
+      for (let k = 0; k < N; k++) { if (dk[k] == null) continue; const t = T[r][k];
+        if (t > EPS) up = Math.min(up, Math.max(0, dk[k]) / t); else if (t < -EPS) down = Math.min(down, Math.max(0, dk[k]) / -t); } }
+    return sg === 1 ? { inc: clean(up), dec: clean(down) } : { inc: clean(down), dec: clean(up) };
+  });
+  // Faixas do lado direito
+  const rhsRange = P.rows.map((r, i) => {
+    let up = INF, down = INF;
+    for (let q = 0; q < m; q++) { const g = T[q][idc[i]], xb = Math.max(0, T[q][N]);
+      if (g < -EPS) up = Math.min(up, xb / -g); else if (g > EPS) down = Math.min(down, xb / g); }
+    if (r.rel === "<=" && slack[i] > 1e-9) { up = INF; down = slack[i]; }
+    if (r.rel === ">=" && slack[i] > 1e-9) { down = INF; up = slack[i]; }
+    return flip[i] === 1 ? { inc: clean(up), dec: clean(down) } : { inc: clean(down), dec: clean(up) };
+  });
+  return { status: "optimal", x, z, shadow, lhs, slack, reduced, objRange, rhsRange };
+}
+
+
+/* ===== Montagem dos modelos ===== */
+const num = v => { const x = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return isFinite(x) ? x : NaN; };
+const nz = v => { const x = num(v); return isFinite(x) ? x : 0; };
+const sum = a => a.reduce((t, v) => t + v, 0);
+const sub = s => String(s).replace(/\s+/g, "");
+const vname = (a, b) => (String(a).length === 1 && String(b).length === 1) ? `${a}${b}` : `${a},${b}`;
+
+function buildClassico(d) {
+  let F = d.fontes.map(f => ({ nome: f.nome, of: nz(f.oferta) })), D = d.destinos.map(x => ({ nome: x.nome, dem: nz(x.demanda) }));
+  let C = d.custos.map(r => r.map(nz));
+  const so = sum(F.map(f => f.of)), sd = sum(D.map(x => x.dem)); let nota = null;
+  if (so > sd + 1e-9) { D = D.concat([{ nome: "Fic", dem: so - sd, fict: true }]); C = C.map(r => r.concat([0])); nota = `Oferta (${fmtN(so)}) maior que a demanda (${fmtN(sd)}): criei o destino fictício "Fic" com ${fmtN(so - sd)} e custo 0.`; }
+  if (sd > so + 1e-9) { F = F.concat([{ nome: "Fic", of: sd - so, fict: true }]); C = C.concat([D.map(() => 0)]); nota = `Demanda (${fmtN(sd)}) maior que a oferta (${fmtN(so)}): criei a fonte fictícia "Fic" com ${fmtN(sd - so)} e custo 0.`; }
+  const vars = [], c = [];
+  F.forEach((f, i) => D.forEach((x, j) => { vars.push({ name: vname(i + 1, j + 1), i, j, label: `${f.nome} → ${x.nome}` }); c.push(C[i][j]); }));
+  const rows = [];
+  F.forEach((f, i) => rows.push({ name: `Fonte ${f.nome}: total enviado`, coef: vars.map(v => v.i === i ? 1 : 0), rel: "=", rhs: f.of, group: "Fornecimento (uma por linha)" }));
+  D.forEach((x, j) => rows.push({ name: `Destino ${x.nome}: total recebido`, coef: vars.map(v => v.j === j ? 1 : 0), rel: "=", rhs: x.dem, group: "Demanda (uma por coluna)" }));
+  return { kind: "classico", sense: "min", vars, c, rows, nota, grid: { rows: F.map(f => f.nome), cols: D.map(x => x.nome), cell: (i, j) => vars.findIndex(v => v.i === i && v.j === j) }, objLabel: "Custo total" };
+}
+
+function buildTransbordo(d) {
+  const P = d.fontes.map(f => ({ nome: f.nome, tipo: "F", val: nz(f.oferta) })).concat(d.destinos.map(x => ({ nome: x.nome, tipo: "D", val: nz(x.demanda) })));
+  const so = sum(P.filter(p => p.tipo === "F").map(p => p.val)), sd = sum(P.filter(p => p.tipo === "D").map(p => p.val));
+  let nota = null;
+  const Dv = isFinite(num(d.D)) && num(d.D) > 0 ? Math.max(num(d.D), sd) : sd;
+  if (isFinite(num(d.D)) && num(d.D) > 0 && num(d.D) < sd) nota = `D precisa ser no mínimo a demanda total (${fmtN(sd)}). Usei D = ${fmtN(sd)}.`;
+  if (Math.abs(so - sd) > 1e-9) nota = (nota ? nota + " " : "") + `Atenção: oferta total (${fmtN(so)}) ≠ demanda total (${fmtN(sd)}). Ajuste os dados ou crie um ponto fictício.`;
+  const k = P.length, vars = [], c = [];
+  for (let i = 0; i < k; i++) for (let j = 0; j < k; j++) {
+    const v = i === j ? 0 : num(d.custos[i][j]);
+    if (i !== j && !isFinite(v)) continue;
+    vars.push({ name: vname(P[i].nome, P[j].nome), i, j, label: `${P[i].nome} → ${P[j].nome}`, diag: i === j }); c.push(v);
+  }
+  const sup = P.map(p => p.tipo === "F" ? p.val + Dv : Dv), dem = P.map(p => p.tipo === "D" ? p.val + Dv : Dv);
+  const rows = [];
+  P.forEach((p, i) => rows.push({ name: `${p.nome}: total que sai`, coef: vars.map(v => v.i === i ? 1 : 0), rel: "=", rhs: sup[i], group: `Fornecimento do quadro ampliado (${p.tipo === "F" ? "oferta + D" : "D"})` }));
+  P.forEach((p, j) => rows.push({ name: `${p.nome}: total que chega`, coef: vars.map(v => v.j === j ? 1 : 0), rel: "=", rhs: dem[j], group: `Demanda do quadro ampliado (${p.tipo === "D" ? "demanda + D" : "D"})` }));
+  rows.forEach(r => r.group = r.group.startsWith("Forn") ? "Fornecimento do quadro ampliado" : "Demanda do quadro ampliado");
+  return { kind: "transbordo", sense: "min", vars, c, rows, nota, D: Dv, sup, dem, pts: P,
+    grid: { rows: P.map(p => p.nome), cols: P.map(p => p.nome), cell: (i, j) => vars.findIndex(v => v.i === i && v.j === j) }, objLabel: "Custo total" };
+}
+
+function buildFluxo(d) {
+  const O = d.origens, D = d.destinos, vars = [], c = [];
+  O.forEach((o, i) => D.forEach((x, j) => { vars.push({ name: vname(o.nome, x.nome), i, j, label: `${o.nome} → ${x.nome}`, cap: nz(d.cap[i][j]) }); c.push(1); }));
+  const rows = [];
+  O.forEach((o, i) => rows.push({ name: `${o.nome}: total despachado`, coef: vars.map(v => v.i === i ? 1 : 0), rel: o.eq ? "=" : "<=", rhs: nz(o.disp), group: "Disponibilidade (origens)" }));
+  D.forEach((x, j) => rows.push({ name: `${x.nome}: total recebido`, coef: vars.map(v => v.j === j ? 1 : 0), rel: x.eq ? "=" : "<=", rhs: nz(x.nec), group: "Necessidade (destinos)" }));
+  vars.forEach((v, k) => rows.push({ name: `Limite da rota ${v.label}`, coef: vars.map((_, q) => q === k ? 1 : 0), rel: "<=", rhs: v.cap, group: "Limitação das rotas" }));
+  return { kind: "fluxo", sense: "max", vars, c, rows, grid: { rows: O.map(o => o.nome), cols: D.map(x => x.nome), cell: (i, j) => vars.findIndex(v => v.i === i && v.j === j) }, objLabel: "Fluxo total" };
+}
+
+function buildRota(d) {
+  const N = d.nos.filter(n => String(n.nome).trim()), names = N.map(n => String(n.nome).trim());
+  const A = d.arcos.filter(a => names.includes(String(a.de).trim()) && names.includes(String(a.para).trim()) && isFinite(num(a.dist)));
+  const vars = A.map(a => ({ name: vname(String(a.de).trim(), String(a.para).trim()), de: String(a.de).trim(), para: String(a.para).trim(), label: `${String(a.de).trim()} → ${String(a.para).trim()}` }));
+  const c = A.map(a => num(a.dist));
+  const rows = N.map(n => {
+    const id = String(n.nome).trim(), orig = n.tipo === "origem";
+    return { name: orig ? `${id} (origem): sai − entra` : `${id}: entra − sai`, coef: vars.map(v => orig ? (v.de === id ? 1 : 0) - (v.para === id ? 1 : 0) : (v.para === id ? 1 : 0) - (v.de === id ? 1 : 0)), rel: "=", rhs: nz(n.valor), group: "Equilíbrio de carga em cada localidade" };
+  });
+  const so = sum(N.filter(n => n.tipo === "origem").map(n => nz(n.valor))), sd = sum(N.filter(n => n.tipo !== "origem").map(n => nz(n.valor)));
+  const nota = Math.abs(so - sd) > 1e-9 ? `Atenção: a origem tem ${fmtN(so)} e a soma das necessidades é ${fmtN(sd)}. Elas precisam ser iguais.` : null;
+  return { kind: "rota", sense: "min", vars, c, rows, nota, objLabel: "Momento de transporte (t·km)" };
+}
+
+/* ===== Teoria das filas ===== */
+function fact(n) { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; }
+function filas(l, m, s) {
+  s = Math.max(1, Math.round(s || 1)); const r = l / m, u = r / s;
+  if (!(l > 0 && m > 0) || u >= 1) return { ok: false, r, u, s };
+  let sm = 0; for (let n = 0; n < s; n++) sm += Math.pow(r, n) / fact(n);
+  const p0 = 1 / (sm + Math.pow(r, s) / (fact(s) * (1 - u)));
+  const NF = p0 * Math.pow(r, s) * u / (fact(s) * Math.pow(1 - u, 2)), TF = NF / l, TS = TF + 1 / m, NS = l * TS;
+  const P = n => n < s ? p0 * Math.pow(r, n) / fact(n) : p0 * Math.pow(r, n) / (fact(s) * Math.pow(s, n - s));
+  const cum = k => { let c = 0; for (let n = 0; n <= k; n++) c += P(n); return c; };
+  const Pwait = Math.pow(r, s) / (fact(s) * (1 - u)) * p0;
+  return { ok: true, l, m, s, r, u, p0, NF, TF, TS, NS, P, cum, Pwait };
+}
+/* Catálogo de itens que podem ser pedidos */
+const ITENS = {
+  rho:   { nome: "Taxa de utilização (ρ)", params: [] },
+  P0:    { nome: "Taxa de ociosidade (P₀)", params: [] },
+  NS:    { nome: "Nº médio no sistema (NS)", params: [] },
+  NF:    { nome: "Nº médio na fila (NF)", params: [] },
+  TS:    { nome: "Tempo médio no sistema (TS)", params: [] },
+  TF:    { nome: "Tempo médio na fila (TF)", params: [] },
+  tAt:   { nome: "Duração média do atendimento (1/μ)", params: [] },
+  Pn:    { nome: "P(exatamente n no sistema)", params: ["n"] },
+  Pfila: { nome: "P(exatamente k na fila)", params: ["k"] },
+  Pgt:   { nome: "P(mais de r no sistema)", params: ["r"] },
+  Pge:   { nome: "P(r ou mais no sistema)", params: ["r"] },
+  Plt:   { nome: "P(menos de r no sistema)", params: ["r"] },
+  Pfaixa:{ nome: "P(entre a e b no sistema, incluídos)", params: ["a", "b"] },
+  Pesp:  { nome: "P(mais de k esperando) / espaço para k", params: ["k"] },
+  Pwait: { nome: "P(o cliente ter que esperar)", params: [] },
+  pct:   { nome: "% do tempo na fila e no atendimento", params: [] },
+  custoH:{ nome: "Custo total por hora (CE·NS + CA·μ)", params: [] },
+  muOt:  { nome: "Taxa de atendimento ótima (μ*)", params: [] },
+  econ:  { nome: "Economia mensal com μ* × investimento", params: ["investimento"] }
+};
+function calcItem(it, F, ctx) {
+  const q = F, s = q.s, one = s === 1, f = v => fmtN(v, 4), P = v => fmtP(v);
+  const p = k => num(it[k]);
+  if (!q.ok && !["texto"].includes(it.calculo)) return { formula: "Sistema instável (ρ/s ≥ 1)", valor: "—" };
+  const rho = q.u;
+  switch (it.calculo) {
+    case "rho": return { formula: one ? `ρ = λ/μ = ${f(q.l)}/${f(q.m)}` : `ρ = λ/(s·μ) = ${f(q.l)}/(${s}×${f(q.m)})`, valor: `${f(rho)} (${P(rho)})` };
+    case "P0": return { formula: one ? `P₀ = 1 − ρ = 1 − ${f(rho)}` : `P₀ = 1 / [Σ rⁿ/n! + rˢ/(s!(1 − r/s))]`, valor: `${f(q.p0)} (${P(q.p0)})` };
+    case "NS": return { formula: one ? `NS = λ/(μ − λ) = ${f(q.l)}/(${f(q.m)} − ${f(q.l)})` : `NS = NF + r = ${f(q.NF)} + ${f(q.r)}`, valor: f(q.NS) };
+    case "NF": return { formula: one ? `NF = λ²/[μ(μ − λ)] = ${f(q.l * q.l)}/(${f(q.m)} × ${f(q.m - q.l)})` : `NF = P₀·rˢ·(r/s)/[s!(1 − r/s)²]`, valor: f(q.NF) };
+    case "TS": return { formula: one ? `TS = 1/(μ − λ) = 1/${f(q.m - q.l)}` : `TS = TF + 1/μ = ${f(q.TF)} + ${f(1 / q.m)}`, valor: `${f(q.TS)} ${ctx.u} (${fmtN(q.TS * 60, 2)} min)` };
+    case "TF": return { formula: one ? `TF = λ/[μ(μ − λ)] = ${f(q.l)}/(${f(q.m)} × ${f(q.m - q.l)})` : `TF = NF/λ = ${f(q.NF)}/${f(q.l)}`, valor: `${f(q.TF)} ${ctx.u} (${fmtN(q.TF * 60, 2)} min)` };
+    case "tAt": return { formula: `1/μ = 1/${f(q.m)}`, valor: `${f(1 / q.m)} ${ctx.u} (${fmtN(60 / q.m, 2)} min)` };
+    case "Pn": { const n = p("n"); return { formula: one ? `P(${n}) = (1 − ρ)·ρ^${n} = ${f(1 - rho)} × ${f(rho)}^${n}` : `P(${n}) = P₀·rⁿ/${n < s ? "n!" : "(s!·s^(n−s))"}`, valor: `${f(q.P(n))} (${P(q.P(n))})` }; }
+    case "Pfila": { const k = p("k"), n = k + s; const v = k === 0 ? q.cum(s) : q.P(n); return { formula: k === 0 ? `0 na fila = até ${s} no sistema: P(N ≤ ${s})` : `${k} na fila = ${k} esperando + ${s} em atendimento → n = ${n}: ${one ? `P(${n}) = (1 − ρ)·ρ^${n}` : `P(${n})`}`, valor: `${f(v)} (${P(v)})` }; }
+    case "Pgt": { const r = p("r"), v = 1 - q.cum(r); return { formula: one ? `P(N > ${r}) = ρ^${r + 1} = ${f(rho)}^${r + 1}` : `P(N > ${r}) = 1 − Σ P(0…${r})`, valor: `${f(v)} (${P(v)})` }; }
+    case "Pge": { const r = p("r"), v = r <= 0 ? 1 : 1 - q.cum(r - 1); return { formula: one ? `P(N ≥ ${r}) = ρ^${r} = ${f(rho)}^${r}` : `P(N ≥ ${r}) = 1 − Σ P(0…${r - 1})`, valor: `${f(v)} (${P(v)})` }; }
+    case "Plt": { const r = p("r"), v = r <= 0 ? 0 : q.cum(r - 1); return { formula: one ? `P(N < ${r}) = 1 − ρ^${r} = 1 − ${f(rho)}^${r}` : `P(N < ${r}) = Σ P(0…${r - 1})`, valor: `${f(v)} (${P(v)})` }; }
+    case "Pfaixa": { const a = p("a"), b = p("b"), v = q.cum(b) - (a > 0 ? q.cum(a - 1) : 0); return { formula: one ? `P(${a} ≤ N ≤ ${b}) = ρ^${a} − ρ^${b + 1} = ${f(Math.pow(rho, a))} − ${f(Math.pow(rho, b + 1))}` : `Σ P(${a}…${b})`, valor: `${f(v)} (${P(v)})` }; }
+    case "Pesp": { const k = p("k"), r = k + s, v = 1 - q.cum(r); return { formula: `mais de ${k} esperando = mais de ${r} no sistema: ${one ? `P(N > ${r}) = ρ^${r + 1} = ${f(rho)}^${r + 1}` : `1 − Σ P(0…${r})`}`, valor: `${f(v)} (${P(v)})` }; }
+    case "Pwait": return { formula: one ? `P(esperar) = P(N ≥ 1) = ρ` : `P(N ≥ s) = rˢ/(s!(1 − r/s))·P₀`, valor: `${f(one ? rho : q.Pwait)} (${P(one ? rho : q.Pwait)})` };
+    case "pct": { const a = (1 / q.m) / q.TS; return { formula: `atendimento = (1/μ)/TS = ${f(1 / q.m)}/${f(q.TS)}`, valor: `${P(a)} no atendimento · ${P(1 - a)} na fila` }; }
+    case "custoH": { if (!isFinite(ctx.CE) || !isFinite(ctx.CA)) return { formula: "Informe CE e CA", valor: "—" };
+      const v = one ? ctx.CE * q.NS + ctx.CA * q.m : ctx.CE * q.NS + ctx.CA * s;
+      return { formula: one ? `CT = CE·NS + CA·μ = ${f(ctx.CE)}×${f(q.NS)} + ${f(ctx.CA)}×${f(q.m)}` : `CT = CE·NS + CA·s = ${f(ctx.CE)}×${f(q.NS)} + ${f(ctx.CA)}×${s}`, valor: `$${fmtN(v, 2)}/${ctx.u}  ·  mês (${ctx.H} h): $${fmtN(v * ctx.H, 2)}` }; }
+    case "muOt": { if (!isFinite(ctx.CE) || !isFinite(ctx.CA)) return { formula: "Informe CE e CA", valor: "—" };
+      const ms = q.l + Math.sqrt(ctx.CE * q.l / ctx.CA); return { formula: `μ* = λ + √(CE·λ/CA) = ${f(q.l)} + √(${f(ctx.CE)}×${f(q.l)}/${f(ctx.CA)})`, valor: f(ms) }; }
+    case "econ": { if (!isFinite(ctx.CE) || !isFinite(ctx.CA)) return { formula: "Informe CE e CA", valor: "—" };
+      const ms = q.l + Math.sqrt(ctx.CE * q.l / ctx.CA), CT = mu => ctx.CA * mu + ctx.CE * q.l / (mu - q.l), e = (CT(q.m) - CT(ms)) * ctx.H, inv = p("investimento");
+      return { formula: `[CT(${f(q.m)}) − CT(${f(ms)})] × ${ctx.H} h = [${fmtN(CT(q.m), 2)} − ${fmtN(CT(ms), 2)}] × ${ctx.H}`, valor: `$${fmtN(e, 2)}/mês${isFinite(inv) ? (e > inv ? ` > $${fmtN(inv, 2)} → vale a pena` : ` < $${fmtN(inv, 2)} → não vale a pena`) : ""}` }; }
+    case "texto": return { formula: "", valor: it.resposta || "" };
+    default: return { formula: "Item não reconhecido", valor: "—" };
+  }
+}
+
+/* ===== Utilidades ===== */
+const fmtN = (v, d = 4) => { if (v == null || !isFinite(v)) return "—"; if (Math.abs(v) >= 1e29) return "1E+30"; return Number(v).toLocaleString("pt-BR", { maximumFractionDigits: d }); };
+const fmtP = v => (v == null || !isFinite(v)) ? "—" : (v * 100).toLocaleString("pt-BR", { maximumFractionDigits: 2 }) + "%";
+const el = (tag, a = {}, ...kids) => { const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(a)) { if (v == null || v === false) continue; if (k === "class") e.className = v; else if (k === "text") e.textContent = v; else if (k === "html") e.innerHTML = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v === true ? "" : v); }
+  kids.flat().forEach(c => c != null && c !== false && e.append(c.nodeType ? c : document.createTextNode(c))); return e; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const xv = name => `x<sub>${esc(name)}</sub>`;
+const clone = o => JSON.parse(JSON.stringify(o));
+let uid = 0; const nid = p => `${p}-${++uid}`;
+
+/* ===== Estado inicial: exemplos das fichas ===== */
+const EX = {
+  classico: { fontes: [{ nome: "1", oferta: 15 }, { nome: "2", oferta: 25 }], destinos: [{ nome: "1", demanda: 20 }, { nome: "2", demanda: 10 }, { nome: "3", demanda: 10 }], custos: [[10, 3, 5], [12, 7, 9]] },
+  transbordo: { fontes: [{ nome: "A", oferta: 200 }, { nome: "B", oferta: 400 }], destinos: [{ nome: "1", demanda: 200 }, { nome: "2", demanda: 200 }, { nome: "3", demanda: 200 }], D: "",
+    custos: [[0, 8, 1, 6, 3], [7, 0, 2, 5, 4], [2, 3, 0, 4, 7], [4, 2, 1, 0, 2], [6, 7, 8, 2, 0]] },
+  fluxo: { origens: [{ nome: "A", disp: 120 }, { nome: "B", disp: 100 }, { nome: "C", disp: 100 }, { nome: "D", disp: 100 }],
+    destinos: [{ nome: "E", nec: 100 }, { nome: "F", nec: 80, eq: true }, { nome: "G", nec: 90 }, { nome: "H", nec: 150, eq: true }],
+    cap: [[70, 30, 20, 0], [50, 40, 10, 0], [0, 20, 40, 80], [0, 20, 40, 80]] },
+  rota: { nos: [{ nome: "A", tipo: "origem", valor: 200 }, { nome: "B", tipo: "no", valor: 20 }, { nome: "C", tipo: "no", valor: 30 }, { nome: "D", tipo: "no", valor: 10 }, { nome: "E", tipo: "no", valor: 20 }, { nome: "F", tipo: "no", valor: 20 }, { nome: "G", tipo: "no", valor: 100 }],
+    arcos: [["A","B",15],["A","E",30],["A","C",25],["A","D",29],["B","E",22],["C","E",12],["C","F",20],["D","F",27],["D","G",34],["E","G",32],["F","G",28]].map(([de, para, dist]) => ({ de, para, dist })) },
+  filas: { l: 8, m: 10, s: 1, u: "h", CE: "", CA: "", H: 176, deriv: "", itens: [{ calculo: "rho" }, { calculo: "P0" }, { calculo: "NS" }, { calculo: "NF" }, { calculo: "TS" }, { calculo: "TF" }, { calculo: "Pfila", k: 2 }, { calculo: "Pgt", r: 5 }, { calculo: "Plt", r: 3 }] }
+};
+const S = clone(EX);
+function hasData(k) { const d = S[k], f = v => v !== "" && v != null && isFinite(num(v));
+  if (k === "classico" || k === "transbordo") return d.custos.some((r, i) => r.some((v, j) => (k !== "transbordo" || i !== j) && f(v)));
+  if (k === "fluxo") return d.cap.some(r => r.some(f));
+  if (k === "rota") return d.arcos.some(a => f(a.dist));
+  return true; }
+const TITLES = { classico: "Ficha 6 · Exemplo 1", transbordo: "Ficha 7 · Exemplo", fluxo: "Ficha 8 · Café", rota: "Ficha 8.1 · Melhor rota", filas: "Exemplo: pedágio com uma cabine" };
+const SUB = { classico: "modelo", transbordo: "modelo", fluxo: "modelo", rota: "modelo" };
+let TAB = "classico";
+
+/* ===== Abas ===== */
+const TABS = [
+  { id: "classico", k: "1", l: "Clássico" },
+  { id: "transbordo", k: "2", l: "Transbordo" },
+  { id: "fluxo", k: "3", l: "Fluxo máximo" },
+  { id: "rota", k: "4", l: "Melhor rota" },
+  { id: "filas", k: "5", l: "Filas" }
+];
+function renderTabs() { const n = document.getElementById("tabs"); n.innerHTML = "";
+  TABS.forEach(t => n.append(el("button", { type: "button", class: "tab" + (TAB === t.id ? " on" : ""), "aria-pressed": String(TAB === t.id), onclick: () => go(t.id) }, el("span", { class: "tab-k", text: t.k }), el("span", { class: "tab-l", text: t.l })))); }
+function go(id) { TAB = id; renderTabs(); render(); try { history.replaceState(null, "", "#" + id); } catch (e) {} window.scrollTo({ top: 0 }); }
+function render() { const m = document.getElementById("main"); m.innerHTML = "";
+  if (TAB === "filas") renderFilas(m); else renderLP(m, TAB); }
+
+/* ===== Campos ===== */
+function inNum(val, on, o = {}) { const i = el("input", { type: "number", step: "any", class: "ni" + (o.cls ? " " + o.cls : ""), value: val === "" || val == null ? "" : String(val), placeholder: o.ph || "", "aria-label": o.label || "valor", id: nid("n"), disabled: o.disabled });
+  i.addEventListener("input", e => on(e.target.value === "" ? "" : num(e.target.value))); return i; }
+function inTxt(val, on, o = {}) { const i = el("input", { type: "text", class: "ti" + (o.cls ? " " + o.cls : ""), value: String(val ?? ""), "aria-label": o.label || "nome", id: nid("t"), maxlength: o.max || 12 });
+  i.addEventListener("input", e => on(e.target.value)); return i; }
+function stepper(label, n, set, min = 1, max = 12) {
+  return el("div", { class: "step" }, el("span", { class: "step-l", text: label }),
+    el("button", { type: "button", class: "sb", "aria-label": "Diminuir " + label, onclick: () => n > min && set(n - 1) }, "−"),
+    el("span", { class: "step-v", text: String(n) }),
+    el("button", { type: "button", class: "sb", "aria-label": "Aumentar " + label, onclick: () => n < max && set(n + 1) }, "+"));
+}
+const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+function resize(arr, n, make) { while (arr.length < n) arr.push(make(arr.length)); arr.length = n; }
+
+/* ===== Editores ===== */
+let recalcTimer = null; const recalc = () => { clearTimeout(recalcTimer); recalcTimer = setTimeout(() => solveAndShow(TAB), 150); };
+function editorClassico(d) {
+  const box = el("div", { class: "ed" });
+  box.append(el("div", { class: "steps" },
+    stepper("Fontes", d.fontes.length, n => { resize(d.fontes, n, i => ({ nome: String(i + 1), oferta: 0 })); resize(d.custos, n, () => d.destinos.map(() => 0)); render(); }),
+    stepper("Destinos", d.destinos.length, n => { resize(d.destinos, n, i => ({ nome: String(i + 1), demanda: 0 })); d.custos.forEach(r => resize(r, n, () => 0)); render(); })));
+  const t = el("table", { class: "grid" }), hr = el("tr", {}, el("th", { class: "corner", text: "Fonte \\ Destino" }));
+  d.destinos.forEach(x => hr.append(el("th", {}, inTxt(x.nome, v => { x.nome = v; recalc(); }, { label: "Nome do destino" }))));
+  hr.append(el("th", { class: "hd-of", text: "Oferta" })); t.append(el("thead", {}, hr));
+  const tb = el("tbody");
+  d.fontes.forEach((f, i) => { const tr = el("tr", {}, el("th", {}, inTxt(f.nome, v => { f.nome = v; recalc(); }, { label: "Nome da fonte" })));
+    d.destinos.forEach((x, j) => tr.append(el("td", {}, inNum(d.custos[i][j], v => { d.custos[i][j] = v; recalc(); }, { label: `Custo ${f.nome}→${x.nome}` }))));
+    tr.append(el("td", { class: "of" }, inNum(f.oferta, v => { f.oferta = v; recalc(); }, { label: "Oferta " + f.nome, cls: "sup" }))); tb.append(tr); });
+  const dr = el("tr", {}, el("th", { class: "hd-of", text: "Demanda" }));
+  d.destinos.forEach(x => dr.append(el("td", { class: "of" }, inNum(x.demanda, v => { x.demanda = v; recalc(); }, { label: "Demanda " + x.nome, cls: "sup" }))));
+  dr.append(el("td", { class: "bal", id: "bal" })); tb.append(dr); t.append(tb);
+  box.append(el("div", { class: "tw" }, t), el("p", { class: "hint", text: "Números dentro do quadro = custo por unidade. Se oferta ≠ demanda, o site cria a fonte ou o destino fictício sozinho." }));
+  return box;
+}
+function editorTransbordo(d) {
+  const box = el("div", { class: "ed" });
+  const k = () => d.fontes.length + d.destinos.length;
+  const rebuild = (mOld, nOld) => { // reorganiza a matriz de custos mantendo valores
+    const old = d.custos, oldNames = [...Array(mOld).keys()].map(i => "F" + i).concat([...Array(nOld).keys()].map(j => "D" + j));
+    const newNames = d.fontes.map((_, i) => "F" + i).concat(d.destinos.map((_, j) => "D" + j));
+    d.custos = newNames.map((a, i) => newNames.map((b, j) => { if (i === j) return 0; const oi = oldNames.indexOf(a), oj = oldNames.indexOf(b); return oi >= 0 && oj >= 0 && old[oi] ? old[oi][oj] : ""; })); };
+  box.append(el("div", { class: "steps" },
+    stepper("Fontes", d.fontes.length, n => { const m0 = d.fontes.length, n0 = d.destinos.length; resize(d.fontes, n, i => ({ nome: LETTERS[i], oferta: 0 })); rebuild(m0, n0); render(); }, 1, 6),
+    stepper("Destinos", d.destinos.length, n => { const m0 = d.fontes.length, n0 = d.destinos.length; resize(d.destinos, n, i => ({ nome: String(i + 1), demanda: 0 })); rebuild(m0, n0); render(); }, 1, 6),
+    el("label", { class: "dfield" }, el("span", { text: "D (capacidade fictícia)" }), inNum(d.D, v => { d.D = v; recalc(); }, { ph: "auto", label: "D" }))));
+  const pts = d.fontes.map(f => ({ o: f, tipo: "F" })).concat(d.destinos.map(x => ({ o: x, tipo: "D" })));
+  const t1 = el("table", { class: "grid small" }, el("thead", {}, el("tr", {}, el("th", { text: "Ponto" }), el("th", { text: "Papel" }), el("th", { text: "Oferta / demanda" }))));
+  const b1 = el("tbody"); pts.forEach(p => b1.append(el("tr", {}, el("th", {}, inTxt(p.o.nome, v => { p.o.nome = v; render(); }, { label: "Nome do ponto" })), el("td", { class: "muted", text: p.tipo === "F" ? "fonte (oferta)" : "destino (demanda)" }),
+    el("td", {}, inNum(p.tipo === "F" ? p.o.oferta : p.o.demanda, v => { if (p.tipo === "F") p.o.oferta = v; else p.o.demanda = v; recalc(); }, { cls: "sup", label: "Quantidade" }))))); t1.append(b1);
+  const t2 = el("table", { class: "grid" }), hr = el("tr", {}, el("th", { class: "corner", text: "De \\ Para" }));
+  pts.forEach(p => hr.append(el("th", { class: "lbl", text: p.o.nome }))); t2.append(el("thead", {}, hr));
+  const b2 = el("tbody");
+  pts.forEach((p, i) => { const tr = el("tr", {}, el("th", { class: "lbl", text: p.o.nome }));
+    pts.forEach((q, j) => tr.append(el("td", { class: i === j ? "diag" : "" }, i === j ? el("span", { class: "zero", text: "0" }) : inNum(d.custos[i][j], v => { d.custos[i][j] = v; recalc(); }, { ph: "—", label: `Custo ${p.o.nome}→${q.o.nome}` })))); b2.append(tr); });
+  t2.append(b2);
+  box.append(el("h4", { text: "Pontos" }), el("div", { class: "tw" }, t1), el("h4", { text: "Custos entre todos os pontos" }), el("div", { class: "tw" }, t2),
+    el("p", { class: "hint", text: "Diagonal = 0 (o que fica parado no ponto). Deixe em branco (—) a rota que não existe. O site monta o quadro ampliado com D = demanda total, como na Ficha 7." }));
+  return box;
+}
+function editorFluxo(d) {
+  const box = el("div", { class: "ed" });
+  box.append(el("div", { class: "steps" },
+    stepper("Origens", d.origens.length, n => { resize(d.origens, n, i => ({ nome: LETTERS[i], disp: 0 })); resize(d.cap, n, () => d.destinos.map(() => 0)); render(); }),
+    stepper("Destinos", d.destinos.length, n => { resize(d.destinos, n, i => ({ nome: LETTERS[(d.origens.length + i) % 26], nec: 0 })); d.cap.forEach(r => resize(r, n, () => 0)); render(); })));
+  const t = el("table", { class: "grid" }), hr = el("tr", {}, el("th", { class: "corner", text: "Origem \\ Destino" }));
+  d.destinos.forEach(x => hr.append(el("th", {}, inTxt(x.nome, v => { x.nome = v; recalc(); }, { label: "Nome do destino" }))));
+  hr.append(el("th", { class: "hd-of", text: "Disponível" }), el("th", { class: "hd-of", text: "=" })); t.append(el("thead", {}, hr));
+  const tb = el("tbody");
+  d.origens.forEach((o, i) => { const tr = el("tr", {}, el("th", {}, inTxt(o.nome, v => { o.nome = v; recalc(); }, { label: "Nome da origem" })));
+    d.destinos.forEach((x, j) => tr.append(el("td", {}, inNum(d.cap[i][j], v => { d.cap[i][j] = v; recalc(); }, { label: `Capacidade ${o.nome}→${x.nome}` }))));
+    tr.append(el("td", { class: "of" }, inNum(o.disp, v => { o.disp = v; recalc(); }, { cls: "sup", label: "Disponível " + o.nome })),
+      el("td", { class: "ck" }, checkbox(o.eq, v => { o.eq = v; recalc(); }, "Despachar tudo de " + o.nome))); tb.append(tr); });
+  const dr = el("tr", {}, el("th", { class: "hd-of", text: "Necessidade" }));
+  d.destinos.forEach(x => dr.append(el("td", { class: "of" }, inNum(x.nec, v => { x.nec = v; recalc(); }, { cls: "sup", label: "Necessidade " + x.nome }))));
+  dr.append(el("td"), el("td")); tb.append(dr);
+  const er = el("tr", {}, el("th", { class: "hd-of", text: "Atender tudo (=)" }));
+  d.destinos.forEach(x => er.append(el("td", { class: "ck" }, checkbox(x.eq, v => { x.eq = v; recalc(); }, "Atender totalmente " + x.nome))));
+  er.append(el("td"), el("td")); tb.append(er); t.append(tb);
+  box.append(el("div", { class: "tw" }, t), el("p", { class: "hint", text: "Números dentro do quadro = capacidade máxima de cada rota (0 = sem rota). Marque \"=\" no destino que deve ser plenamente atendido." }));
+  return box;
+}
+function checkbox(v, on, label) { const c = el("input", { type: "checkbox", "aria-label": label, id: nid("c") }); c.checked = !!v; c.addEventListener("change", e => on(e.target.checked)); return c; }
+function editorRota(d) {
+  const box = el("div", { class: "ed" });
+  const t1 = el("table", { class: "grid small" }, el("thead", {}, el("tr", {}, el("th", { text: "Localidade" }), el("th", { text: "Papel" }), el("th", { text: "Carga (t)" }), el("th", { text: "" }))));
+  const b1 = el("tbody");
+  d.nos.forEach((n, i) => { const sel = el("select", { class: "sel", "aria-label": "Papel", id: nid("s") }, el("option", { value: "origem", text: "origem (disponível)" }), el("option", { value: "no", text: "necessidade" }));
+    sel.value = n.tipo; sel.addEventListener("change", e => { n.tipo = e.target.value; recalc(); });
+    b1.append(el("tr", {}, el("td", {}, inTxt(n.nome, v => { n.nome = v; recalc(); }, { label: "Nome" })), el("td", {}, sel), el("td", {}, inNum(n.valor, v => { n.valor = v; recalc(); }, { cls: "sup", label: "Carga" })),
+      el("td", {}, el("button", { type: "button", class: "x", "aria-label": "Remover localidade", onclick: () => { d.nos.splice(i, 1); render(); } }, "×")))); });
+  t1.append(b1);
+  const t2 = el("table", { class: "grid small" }, el("thead", {}, el("tr", {}, el("th", { text: "De" }), el("th", { text: "Para" }), el("th", { text: "Distância (km)" }), el("th", { text: "" }))));
+  const b2 = el("tbody");
+  d.arcos.forEach((a, i) => b2.append(el("tr", {}, el("td", {}, inTxt(a.de, v => { a.de = v; recalc(); }, { label: "De" })), el("td", {}, inTxt(a.para, v => { a.para = v; recalc(); }, { label: "Para" })),
+    el("td", {}, inNum(a.dist, v => { a.dist = v; recalc(); }, { label: "Distância" })), el("td", {}, el("button", { type: "button", class: "x", "aria-label": "Remover estrada", onclick: () => { d.arcos.splice(i, 1); render(); } }, "×")))));
+  t2.append(b2);
+  box.append(el("div", { class: "two" },
+    el("div", {}, el("h4", { text: "Localidades" }), el("div", { class: "tw" }, t1), el("button", { type: "button", class: "ghost", onclick: () => { d.nos.push({ nome: LETTERS[d.nos.length % 26], tipo: "no", valor: 0 }); render(); } }, "+ Localidade")),
+    el("div", {}, el("h4", { text: "Estradas (setas)" }), el("div", { class: "tw" }, t2), el("button", { type: "button", class: "ghost", onclick: () => { d.arcos.push({ de: "", para: "", dist: "" }); render(); } }, "+ Estrada"))),
+    el("p", { class: "hint", text: "Cada estrada tem sentido (De → Para). Se a estrada vale nos dois sentidos, cadastre as duas. A origem tem a carga total; as outras localidades, a necessidade delas." }));
+  return box;
+}
+
+/* ===== Tela de um problema de PL ===== */
+const BUILD = { classico: [buildClassico, editorClassico, "Problema clássico de transporte", "Ficha 6"], transbordo: [buildTransbordo, editorTransbordo, "Transporte com transbordo", "Ficha 7"], fluxo: [buildFluxo, editorFluxo, "Fluxo máximo com rotas limitadas", "Ficha 8"], rota: [buildRota, editorRota, "Melhor rota (t·km)", "Ficha 8.1"] };
+function renderLP(root, k) {
+  const [, editor, title, ficha] = BUILD[k];
+  root.append(el("section", { class: "head" }, el("div", {}, el("div", { class: "eyebrow" }, el("span", { text: ficha }), el("span", { class: "chip", text: TITLES[k] && S[k] === S[k] ? "carregado: " + TITLES[k] : "" })),
+    el("h2", { text: title })), el("div", { class: "head-act" },
+      el("button", { type: "button", class: "ghost", onclick: () => { S[k] = clone(EX[k]); TITLES[k] = ({ classico: "Ficha 6 · Exemplo 1", transbordo: "Ficha 7 · Exemplo", fluxo: "Ficha 8 · Café", rota: "Ficha 8.1 · Melhor rota" })[k]; render(); } }, "Exemplo da ficha"),
+      el("button", { type: "button", class: "ghost", onclick: () => { clearProblem(k); TITLES[k] = "em branco"; render(); } }, "Limpar"))));
+  const grid = el("div", { class: "lp-grid" },
+    el("section", { class: "panel" }, el("div", { class: "ph" }, el("h3", { text: "Dados" })), editor(S[k])),
+    el("section", { class: "panel res" }, el("div", { class: "ph" }, el("h3", { text: "Resultado" }), el("button", { type: "button", class: "solve", onclick: () => solveAndShow(k) }, "Resolver")), el("div", { id: "res" })));
+  root.append(grid);
+  const subs = [["modelo", "Modelo para copiar"], ["resp", "Relatório de Respostas"], ["sens", "Relatório de Sensibilidade"], ["excel", "Excel / Solver"]];
+  const seg = el("div", { class: "seg", role: "group", "aria-label": "Detalhes" });
+  subs.forEach(([id, l]) => seg.append(el("button", { type: "button", class: "seg-b" + (SUB[k] === id ? " on" : ""), "aria-pressed": String(SUB[k] === id), onclick: () => { SUB[k] = id; seg.querySelectorAll(".seg-b").forEach(b => { const on = b.dataset.id === id; b.classList.toggle("on", on); b.setAttribute("aria-pressed", String(on)); }); showSub(k); }, "data-id": id }, l)));
+  root.append(el("section", { class: "panel" }, el("div", { class: "ph" }, seg), el("div", { id: "sub", class: "subbody" })));
+  solveAndShow(k);
+}
+function clearProblem(k) {
+  const d = S[k];
+  if (k === "classico") { d.fontes.forEach(f => f.oferta = ""); d.destinos.forEach(x => x.demanda = ""); d.custos = d.custos.map(r => r.map(() => "")); }
+  if (k === "transbordo") { d.fontes.forEach(f => f.oferta = ""); d.destinos.forEach(x => x.demanda = ""); d.custos = d.custos.map((r, i) => r.map((_, j) => i === j ? 0 : "")); d.D = ""; }
+  if (k === "fluxo") { d.origens.forEach(o => { o.disp = ""; o.eq = false; }); d.destinos.forEach(x => { x.nec = ""; x.eq = false; }); d.cap = d.cap.map(r => r.map(() => "")); }
+  if (k === "rota") { d.nos = [{ nome: "A", tipo: "origem", valor: "" }, { nome: "B", tipo: "no", valor: "" }]; d.arcos = [{ de: "A", para: "B", dist: "" }]; }
+}
+let LAST = {};
+function solveAndShow(k) {
+  if (TAB !== k) return;
+  if (!hasData(k)) { LAST[k] = null; const box = document.getElementById("res"); if (box) { box.innerHTML = ""; box.append(el("div", { class: "kpi" }, el("div", { class: "kpi-l", text: "Aguardando dados" }), el("div", { class: "kpi-s", text: "Ajuste o tamanho do quadro e digite os números do exercício. O resultado aparece aqui na hora." }))); }
+    const sb = document.getElementById("sub"); if (sb) { sb.innerHTML = ""; sb.append(el("p", { class: "muted", text: "O modelo e os relatórios aparecem depois que você preencher os dados." })); } return; }
+  const M = BUILD[k][0](S[k]);
+  const R = M.vars.length ? solveLP({ c: M.c, sense: M.sense, rows: M.rows }) : { status: "empty" };
+  LAST[k] = { M, R };
+  const box = document.getElementById("res"); if (!box) return; box.innerHTML = "";
+  const bal = document.getElementById("bal");
+  if (bal && k === "classico") { const so = sum(S[k].fontes.map(f => nz(f.oferta))), sd = sum(S[k].destinos.map(x => nz(x.demanda))); bal.textContent = `${fmtN(so)} | ${fmtN(sd)}`; bal.className = "bal " + (Math.abs(so - sd) < 1e-9 ? "ok" : "warn"); bal.title = "oferta total | demanda total"; }
+  if (M.nota) box.append(el("p", { class: "nota", text: M.nota }));
+  if (R.status !== "optimal") { box.append(el("div", { class: "kpi bad" }, el("div", { class: "kpi-l", text: "Sem solução" }),
+    el("div", { class: "kpi-s", text: R.status === "infeasible" ? "Nenhuma distribuição atende todas as restrições. Confira oferta, demanda e os sinais (= ou ≤)." : R.status === "unbounded" ? "O problema é ilimitado: falta alguma restrição." : "Preencha os dados." })));
+    showSub(k); return; }
+  box.append(el("div", { class: "kpi" }, el("div", { class: "kpi-l", text: (M.sense === "min" ? "Mínimo · " : "Máximo · ") + M.objLabel }), el("div", { class: "kpi-v", text: fmtN(R.z, 2) }), el("div", { class: "pill", text: "Solução ótima" })));
+  // quadro da solução
+  if (M.grid) {
+    const t = el("table", { class: "sol" }), hr = el("tr", {}, el("th", { class: "corner", text: k === "transbordo" ? "De \\ Para" : "" }));
+    M.grid.cols.forEach(c => hr.append(el("th", { text: c }))); hr.append(el("th", { text: "Total" })); t.append(el("thead", {}, hr));
+    const tb = el("tbody"), colT = M.grid.cols.map(() => 0);
+    M.grid.rows.forEach((rn, i) => { const tr = el("tr", {}, el("th", { text: rn })); let rt = 0;
+      M.grid.cols.forEach((_, j) => { const q = M.grid.cell(i, j), v = q >= 0 ? R.x[q] : null; if (v) { rt += v; colT[j] += v; }
+        tr.append(el("td", { class: q < 0 ? "na" : v > 1e-9 ? (M.vars[q].diag ? "dg" : "on") : "", text: q < 0 ? "—" : fmtN(v, 2) })); });
+      tr.append(el("td", { class: "tot", text: fmtN(rt, 2) })); tb.append(tr); });
+    const tr = el("tr", { class: "tr" }, el("th", { text: "Total" })); colT.forEach(v => tr.append(el("td", { class: "tot", text: fmtN(v, 2) }))); tr.append(el("td")); tb.append(tr);
+    t.append(tb); box.append(el("div", { class: "tw" }, t));
+  }
+  // leitura em texto
+  const used = M.vars.map((v, q) => [v, R.x[q], M.c[q]]).filter(([v, x]) => x > 1e-9 && !v.diag);
+  const lines = used.map(([v, x, c]) => `${v.label}: ${fmtN(x, 2)}${M.kind === "fluxo" ? "" : ` × ${fmtN(c)} = ${fmtN(x * c, 2)}`}`);
+  box.append(el("div", { class: "leitura" }, el("h4", { text: "Resposta para escrever" }),
+    el("p", { html: `${M.sense === "min" ? "Mínimo" : "Máximo"} = <b>${fmtN(R.z, 2)}</b>${M.kind === "rota" ? " t·km" : M.kind === "fluxo" ? " (total transportado)" : ""}. Rotas usadas: ${used.map(([v, x]) => `${xv(v.name)} = ${fmtN(x, 2)}`).join(", ")}; as demais = 0.` }),
+    el("ul", {}, lines.map(l => el("li", { text: l }))),
+    M.kind === "transbordo" ? el("p", { class: "hint", text: "A diagonal (amarela) é a parte de D que fica parada no ponto: ignore na resposta. Se aparecer um envio entre duas fontes ou entre dois destinos, aí está o transbordo." }) : null));
+  showSub(k);
+}
+
+/* ===== Modelo, relatórios e Excel ===== */
+function termList(coef, vars) { const t = []; coef.forEach((c, j) => { if (!c) return; const a = Math.abs(c);
+  t.push({ s: c < 0 ? "−" : "+", h: `${a === 1 ? "" : fmtN(a)}${xv(vars[j].name)}` }); });
+  return t.map((x, i) => i === 0 ? (x.s === "−" ? "−" : "") + x.h : ` ${x.s} ${x.h}`).join(""); }
+const REL = r => r === "<=" ? "≤" : r === ">=" ? "≥" : "=";
+function showSub(k) {
+  const box = document.getElementById("sub"); if (!box || !LAST[k]) { if (box && !LAST[k]) { box.innerHTML = ""; box.append(el("p", { class: "muted", text: "O modelo e os relatórios aparecem depois que você preencher os dados." })); } return; } box.innerHTML = "";
+  const { M, R } = LAST[k], id = SUB[k];
+  if (id === "modelo") {
+    const vlist = M.vars.filter(v => !v.diag).map(v => `${xv(v.name)} = quantidade de ${esc(v.label.split(" → ")[0])} para ${esc(v.label.split(" → ")[1])}`);
+    const div = el("div", { class: "model" });
+    div.append(el("p", { class: "mh", text: "Variáveis" }), el("p", { html: `x<sub>ij</sub> = quantidade transportada de i para j. ${M.vars.length} variáveis: ${M.vars.map(v => xv(v.name)).join(", ")}.` }));
+    div.append(el("p", { class: "mh", text: "Função objetivo" }), el("p", { class: "fo", html: `${M.sense === "min" ? "Min" : "Max"} ${M.kind === "rota" ? "CT" : "Z"} = ${termList(M.c.map((c, j) => M.vars[j].diag ? 0 : c), M.vars)}` }));
+    div.append(el("p", { class: "mh", text: "Sujeito a" }));
+    let g = null;
+    M.rows.forEach(r => { if (r.group !== g) { g = r.group; div.append(el("p", { class: "mg", text: g })); }
+      if (r.group === "Limitação das rotas") return;
+      div.append(el("p", { class: "mr", html: `${termList(r.coef, M.vars)} ${REL(r.rel)} ${fmtN(r.rhs)} <span class="rn">(${esc(r.name.split(":")[0])})</span>` })); });
+    const lim = M.rows.filter(r => r.group === "Limitação das rotas");
+    if (lim.length) div.append(el("p", { class: "mr", html: lim.map(r => `${termList(r.coef, M.vars)} ≤ ${fmtN(r.rhs)}`).join(" · ") }));
+    div.append(el("p", { class: "mg", text: "Não negatividade" }), el("p", { class: "mr", html: `${xv(M.vars[0].name)}, ${M.vars[1] ? xv(M.vars[1].name) + ", … , " : ""}${xv(M.vars[M.vars.length - 1].name)} ≥ 0` }));
+    if (M.kind === "transbordo") div.append(el("p", { class: "hint", text: `D = ${fmtN(M.D)} (no mínimo a demanda total). Fornecimento do quadro ampliado: fontes = oferta + D, destinos = D. Demanda: destinos = demanda + D, fontes = D. Diagonal com custo 0.` }));
+    box.append(div, el("button", { type: "button", class: "ghost", onclick: e => copyText(div.innerText, e.currentTarget) }, "Copiar texto do modelo"));
+    return;
+  }
+  if (R.status !== "optimal") { box.append(el("p", { class: "muted", text: "Os relatórios aparecem quando houver solução ótima." })); return; }
+  const cell = v => el("td", { class: "n", text: fmtN(v, 4) });
+  if (id === "resp") {
+    box.append(el("h4", { class: "rep-t", text: `Relatório de Respostas · Célula do Objetivo (${M.sense === "min" ? "Mín" : "Máx"})` }),
+      tbl(["Nome", "Valor Original", "Valor Final"], [[M.objLabel, cell(0), cell(R.z)]]),
+      el("h4", { class: "rep-t", text: "Células Variáveis" }),
+      tbl(["Nome", "Descrição", "Valor Original", "Valor Final", "Inteiro"], M.vars.map((v, j) => [el("td", { html: xv(v.name) }), v.label, cell(0), cell(R.x[j]), "Contínuo"])),
+      el("h4", { class: "rep-t", text: "Restrições" }),
+      tbl(["Nome", "Valor da Célula", "Fórmula", "Status", "Margem de Atraso"], M.rows.map((r, i) => [r.name, cell(R.lhs[i]), `${REL(r.rel)} ${fmtN(r.rhs)}`,
+        el("td", { class: R.slack[i] < 1e-9 ? "st on" : "st", text: R.slack[i] < 1e-9 ? "Associação" : "Sem associação" }), cell(R.slack[i])])),
+      el("div", { class: "help" }, el("p", { html: "<b>Como ler:</b> <b>Associação</b> = a restrição está no limite (usou tudo). <b>Sem associação</b> = sobrou folga; a <b>Margem de Atraso</b> diz quanto sobrou." })));
+  }
+  if (id === "sens") {
+    box.append(el("h4", { class: "rep-t", text: "Relatório de Sensibilidade · Células Variáveis" }),
+      tbl(["Nome", "Descrição", "Final Valor", "Reduzido Custo", "Objetivo Coeficiente", "Permitido Aumentar", "Permitido Reduzir"],
+        M.vars.map((v, j) => [el("td", { html: xv(v.name) }), v.label, cell(R.x[j]), cell(R.reduced[j]), cell(M.c[j]), cell(R.objRange[j].inc), cell(R.objRange[j].dec)])),
+      el("h4", { class: "rep-t", text: "Restrições" }),
+      tbl(["Nome", "Final Valor", "Sombra Preço", "Restrição Lateral R.H.", "Permitido Aumentar", "Permitido Reduzir"],
+        M.rows.map((r, i) => [r.name, cell(R.lhs[i]), cell(R.shadow[i]), cell(r.rhs), cell(R.rhsRange[i].inc), cell(R.rhsRange[i].dec)])),
+      el("div", { class: "help" },
+        el("p", { html: "<b>Reduzido Custo:</b> quanto o objetivo piora para cada unidade colocada numa rota que ficou em 0 (rota usada = 0)." }),
+        el("p", { html: "<b>Permitido Aumentar / Reduzir (variáveis):</b> quanto o custo daquela rota pode mudar sem mudar a solução ótima. 1E+30 = infinito." }),
+        el("p", { html: "<b>Sombra Preço:</b> quanto o objetivo muda se o lado direito da restrição (oferta, demanda, capacidade) aumentar 1 unidade. Vale dentro da faixa Permitido Aumentar / Reduzir." }),
+        el("p", { html: "<b>Atenção:</b> problemas de transporte costumam ter solução <i>degenerada</i> (rotas básicas com valor 0). Nesses casos o Excel pode mostrar preços-sombra diferentes destes, e os dois estão corretos." })));
+  }
+  if (id === "excel") {
+    const groups = []; M.rows.forEach((r, i) => { const g = groups[groups.length - 1]; if (g && g.rel === r.rel) g.to = i; else groups.push({ rel: r.rel, from: i, to: i }); });
+    box.append(el("ol", { class: "steps-x" },
+      el("li", { html: "Baixe a planilha abaixo. Ela já vem no modelo da aula: matriz de coeficientes, <b>Utilização</b> (=SOMARPRODUTO), Tipo, Disponibilidade, linha de <b>Variáveis</b> e a <b>célula objetivo</b>." }),
+      el("li", { html: `No Excel: <b>Dados → Solver</b>. O Solver já vem configurado: objetivo ${M.sense === "min" ? "<b>Mín.</b>" : "<b>Máx.</b>"}, células variáveis na linha amarela e ${groups.length} bloco(s) de restrições.` }),
+      el("li", { html: "Clique em <b>Resolver</b>. Na janela de resultado, selecione <b>Resposta</b> e <b>Sensibilidade</b> em \"Relatórios\" e clique em OK. O Excel cria uma aba para cada relatório." }),
+      el("li", { html: "Se o Solver não aparecer: Arquivo → Opções → Suplementos → Ir… → marque Solver." })),
+      el("button", { type: "button", class: "solve", onclick: e => exportXlsx(k, e.currentTarget) }, "Baixar planilha .xlsx com o Solver configurado"),
+      el("p", { class: "hint", id: "xmsg" }));
+  }
+}
+function tbl(head, rows) { const t = el("table", { class: "rep" }, el("thead", {}, el("tr", {}, head.map(h => el("th", { text: h })))));
+  const b = el("tbody"); rows.forEach(r => b.append(el("tr", {}, r.map(c => c && c.nodeType ? c : el("td", { text: String(c) }))))); t.append(b); return el("div", { class: "tw" }, t); }
+function copyText(t, btn) { const done = () => { const o = btn.textContent; btn.textContent = "Copiado"; setTimeout(() => btn.textContent = o, 1400); };
+  try { navigator.clipboard.writeText(t).then(done, () => {}); } catch (e) {} }
+
+/* ===== Exportar xlsx (modelo da aula + Solver configurado) ===== */
+async function exportXlsx(k, btn) {
+  const msg = document.getElementById("xmsg"); const { M } = LAST[k];
+  if (typeof XLSX === "undefined") { msg.textContent = "A biblioteca da planilha não carregou (sem internet?). Tente de novo com internet."; return; }
+  const n = M.vars.length, colL = c => XLSX.utils.encode_col(c), aoa = [];
+  const c0 = 1, cU = c0 + n + 1, cT = cU + 1, cR = cT + 1;
+  aoa.push([`${BUILD[k][2]} — modelo para o Solver`]); aoa.push([]);
+  const hdr = ["RESTRIÇÕES"]; M.vars.forEach(v => hdr.push("x" + v.name)); hdr.push("", "UTILIZAÇÃO", "TIPO", "DISPONIBILIDADE"); aoa.push(hdr);
+  const r0 = 4; // linha 4 (1-based) = primeira restrição
+  const vr = r0 + M.rows.length + 1, cr = vr + 1, orow = cr + 2;
+  M.rows.forEach((r, i) => { const row = [r.name]; r.coef.forEach(c => row.push(c || 0)); row.push("", { f: `SUMPRODUCT(${colL(c0)}${r0 + i}:${colL(c0 + n - 1)}${r0 + i},$${colL(c0)}$${vr}:$${colL(c0 + n - 1)}$${vr})` }, r.rel, r.rhs); aoa.push(row); });
+  aoa.push([]);
+  const R = LAST[k].R; aoa.push(["VARIÁVEIS"].concat(M.vars.map((_, j) => R.status === "optimal" ? R.x[j] : 0)));
+  aoa.push([M.kind === "fluxo" ? "COEF. (FLUXO)" : "CUSTOS / DIST."].concat(M.c.map(v => v)));
+  aoa.push([]);
+  aoa.push([M.objLabel.toUpperCase(), { f: `SUMPRODUCT(${colL(c0)}${cr}:${colL(c0 + n - 1)}${cr},${colL(c0)}${vr}:${colL(c0 + n - 1)}${vr})` }]);
+  aoa.push([]); aoa.push(["Solver: Dados → Solver → Resolver → marque os relatórios Resposta e Sensibilidade."]);
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!cols"] = [{ wch: 34 }].concat(M.vars.map(() => ({ wch: 7 }))).concat([{ wch: 2 }, { wch: 12 }, { wch: 7 }, { wch: 16 }]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Modelo");
+  const q = "Modelo!", A = (c, r) => `$${colL(c)}$${r}`, names = [];
+  const add = (Name, Ref) => names.push({ Name, Ref, Sheet: 0, Hidden: true });
+  add("solver_opt", q + A(c0, orow)); add("solver_typ", M.sense === "min" ? "2" : "1"); add("solver_val", "0");
+  add("solver_adj", q + A(c0, vr) + ":" + A(c0 + n - 1, vr)); add("solver_lin", "1"); add("solver_neg", "1"); add("solver_eng", "2"); add("solver_ver", "3");
+  const groups = []; M.rows.forEach((r, i) => { const g = groups[groups.length - 1]; if (g && g.rel === r.rel) g.to = i; else groups.push({ rel: r.rel, from: i, to: i }); });
+  add("solver_num", String(groups.length));
+  groups.forEach((g, i) => { add(`solver_lhs${i + 1}`, q + A(cU, r0 + g.from) + ":" + A(cU, r0 + g.to)); add(`solver_rel${i + 1}`, g.rel === "<=" ? "1" : g.rel === "=" ? "2" : "3"); add(`solver_rhs${i + 1}`, q + A(cR, r0 + g.from) + ":" + A(cR, r0 + g.to)); });
+  wb.Workbook = { Names: names };
+  const data = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+  const filename = `Solver_${k}.xlsx`;
+  try { const dl = window.claude ? await window.claude.use("downloads") : null;
+    if (dl) { await dl.save({ filename, data: new Blob([data]) }); msg.textContent = "Planilha salva."; return; } } catch (e) { if (e && e.code === "declined") { msg.textContent = "Download cancelado."; return; } }
+  try { const a = el("a", { href: URL.createObjectURL(new Blob([data], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })), download: filename }); document.body.append(a); a.click(); a.remove(); msg.textContent = "Planilha baixada."; }
+  catch (e) { msg.textContent = "Não foi possível baixar aqui. Abra o site pelo navegador para baixar."; }
+}
+
+/* ===== Aba Filas ===== */
+function renderFilas(root) {
+  const d = S.filas;
+  root.append(el("section", { class: "head" }, el("div", {}, el("div", { class: "eyebrow" }, el("span", { text: "Fichas 9 e 9.1 · Lista 6" }), el("span", { class: "chip", text: "carregado: " + TITLES.filas })),
+    el("h2", { text: "Teoria das filas · M/M/1 e M/M/s" })),
+    el("div", { class: "head-act" }, el("button", { type: "button", class: "ghost", onclick: () => { S.filas = clone(EX.filas); TITLES.filas = "Exemplo: pedágio com uma cabine"; render(); } }, "Exemplo"))));
+  const grid = el("div", { class: "lp-grid" });
+  const data = el("section", { class: "panel" }, el("div", { class: "ph" }, el("h3", { text: "Dados" })));
+  const f = el("div", { class: "fields" },
+    fld("Taxa de chegada λ", inNum(d.l, v => { d.l = v; upFilas(); }, { label: "lambda" }), "/" + d.u),
+    fld("Taxa de atendimento μ (por canal)", inNum(d.m, v => { d.m = v; upFilas(); }, { label: "mu" }), "/" + d.u),
+    fld("Número de canais s", inNum(d.s, v => { d.s = v; upFilas(); }, { label: "canais" }), "1 = M/M/1"),
+    fld("Custo do cliente CE", inNum(d.CE, v => { d.CE = v; upFilas(); }, { label: "CE", ph: "—" }), "$/" + d.u),
+    fld("Custo do atendimento CA", inNum(d.CA, v => { d.CA = v; upFilas(); }, { label: "CA", ph: "—" }), "$"),
+    fld("Horas por mês", inNum(d.H, v => { d.H = v; upFilas(); }, { label: "horas" }), "22 × 8 = 176"));
+  data.append(f, el("div", { id: "fcond" }));
+  // ajudantes
+  const help = el("details", { class: "helpers" }, el("summary", { text: "Achar λ e μ a partir de outros dados" }));
+  const hrow = (title, inputs, calc) => { const out = el("span", { class: "hres" }); const st = {};
+    const ins = inputs.map(([k, l]) => fld(l, inNum("", v => { st[k] = v; const r = calc(st); out.textContent = r ? r.txt : ""; out._r = r; }, { label: l })));
+    return el("div", { class: "hrow" }, el("p", { class: "ht", text: title }), el("div", { class: "fields" }, ins), el("div", { class: "hact" }, out,
+      el("button", { type: "button", class: "ghost", onclick: () => { if (out._r) { Object.assign(d, out._r.set); render(); } } }, "Usar"))); };
+  help.append(
+    hrow("TS e ociosidade → μ = 1/[TS(1 − ρ)], λ = ρ·μ", [["ts", "TS"], ["oc", "Ociosidade (%)"]], s => { const rho = 1 - num(s.oc) / 100, m = 1 / (num(s.ts) * (1 - rho)); return isFinite(m) && m > 0 ? { txt: `ρ = ${fmtN(rho)} · μ = ${fmtN(m)} · λ = ${fmtN(rho * m)}`, set: { l: rho * m, m } } : null; }),
+    hrow("TF máximo e μ → λ = TF·μ²/(1 + TF·μ)", [["tf", "TF"], ["m", "μ"]], s => { const m = num(s.m), l = num(s.tf) * m * m / (1 + num(s.tf) * m); return isFinite(l) ? { txt: `λ = ${fmtN(l)}`, set: { l, m } } : null; }),
+    hrow("NS e λ → μ = λ + λ/NS", [["ns", "NS"], ["l", "λ"]], s => { const l = num(s.l), m = l + l / num(s.ns); return isFinite(m) ? { txt: `μ = ${fmtN(m)}`, set: { l, m } } : null; }),
+    hrow("NF e TS → λ² − NF·d·λ − NF·d² = 0, d = 1/TS", [["nf", "NF"], ["ts", "TS"]], s => { const nf = num(s.nf), dd = 1 / num(s.ts), l = (nf * dd + Math.sqrt(Math.pow(nf * dd, 2) + 4 * nf * dd * dd)) / 2; return isFinite(l) ? { txt: `λ = ${fmtN(l)} · μ = ${fmtN(l + dd)}`, set: { l, m: l + dd } } : null; }),
+    tableMean(d));
+  data.append(help);
+  const res = el("section", { class: "panel res" }, el("div", { class: "ph" }, el("h3", { text: "Medidas do sistema" })), el("div", { id: "fres" }));
+  grid.append(data, res); root.append(grid);
+  // itens pedidos
+  const items = el("section", { class: "panel" }, el("div", { class: "ph" }, el("h3", { text: "Itens pedidos no exercício" })));
+  const sel = el("select", { class: "sel", id: "isel", "aria-label": "Tipo de item" }, Object.entries(ITENS).map(([k, v]) => el("option", { value: k, text: v.nome })));
+  const pbox = el("span", { class: "pbox" });
+  const syncP = () => { pbox.innerHTML = ""; ITENS[sel.value].params.forEach(p => pbox.append(el("label", { class: "pl" }, p, el("input", { type: "number", step: "any", class: "ni", "data-p": p, id: nid("p"), "aria-label": p })))); };
+  sel.addEventListener("change", syncP); syncP();
+  items.append(el("div", { class: "addrow" }, sel, pbox, el("button", { type: "button", class: "solve", onclick: () => { const it = { calculo: sel.value }; pbox.querySelectorAll("input").forEach(i => it[i.dataset.p] = num(i.value)); d.itens.push(it); upFilas(); } }, "Adicionar item")),
+    el("div", { id: "fitems" }));
+  root.append(items);
+  // Poisson
+  const pois = el("details", { class: "panel helpers" }, el("summary", { text: "Distribuição de Poisson das chegadas (frequências da Ficha 9.1)" }));
+  const pst = { lt: "", xmax: 20 }, pout = el("div");
+  const drawP = () => { pout.innerHTML = ""; const lt = num(pst.lt); if (!(lt > 0)) return; let p = Math.exp(-lt), acc = 0; const rows = [];
+    for (let x = 0; x <= Math.min(60, nz(pst.xmax)); x++) { if (x > 0) p = p * lt / x; acc += p; rows.push([String(x), fmtN(p, 4), fmtN(acc, 4)]); }
+    pout.append(el("p", { class: "hint", text: `P(x) = e^(−λt)·(λt)^x / x!  ·  atalho: P(x) = P(x − 1)·λt/x, com P(0) = e^(−${fmtN(lt)}) = ${fmtN(Math.exp(-lt), 6)}` }), tbl(["x", "P(x)", "Acumulada"], rows)); };
+  pois.append(el("div", { class: "fields" }, fld("Média λt", inNum("", v => { pst.lt = v; drawP(); }, { label: "lambda t" }), ""), fld("x até", inNum(20, v => { pst.xmax = v; drawP(); }, { label: "x máximo" }), "")), pout);
+  root.append(pois);
+  upFilas();
+}
+function fld(label, input, unit) { return el("label", { class: "fld" }, el("span", { class: "fl", text: label }), el("span", { class: "fr" }, input, unit ? el("span", { class: "fu", text: unit }) : null)); }
+function tableMean(d) {
+  const ta = el("textarea", { class: "ta small", rows: "5", id: nid("ta"), placeholder: "Um par por linha: valor  probabilidade(% ou frequência)\n10 15\n12 20\n14 33", "aria-label": "Tabela de valores" });
+  const out = el("span", { class: "hres" });
+  const calc = () => { const pr = ta.value.split(/\n/).map(l => l.trim().split(/[\s;\t]+/).map(x => num(x))).filter(p => p.length >= 2 && isFinite(p[0]) && isFinite(p[1]));
+    const sw = sum(pr.map(p => p[1])), m = sum(pr.map(p => p[0] * p[1])) / (sw || 1); out.textContent = pr.length ? `Σ(valor × peso) = ${fmtN(sum(pr.map(p => p[0] * p[1])))} ÷ Σ pesos ${fmtN(sw)} = média ${fmtN(m)}` : ""; out._m = m; };
+  ta.addEventListener("input", calc);
+  return el("div", { class: "hrow" }, el("p", { class: "ht", text: "Média de uma tabela (valor × probabilidade ou frequência)" }), ta, el("div", { class: "hact" }, out,
+    el("button", { type: "button", class: "ghost", onclick: () => { if (isFinite(out._m)) { d.l = out._m; render(); } } }, "Usar como λ"),
+    el("button", { type: "button", class: "ghost", onclick: () => { if (isFinite(out._m)) { d.m = out._m; render(); } } }, "Usar como μ")));
+}
+function upFilas() {
+  const d = S.filas, F = filas(nz(d.l), nz(d.m), nz(d.s) || 1), ctx = { CE: num(d.CE), CA: num(d.CA), H: nz(d.H) || 176, u: d.u };
+  const c = document.getElementById("fcond");
+  const vazio = !(num(d.l) > 0 && num(d.m) > 0);
+  if (c && vazio) { c.className = "cond"; c.textContent = "Digite λ e μ (na mesma unidade de tempo)."; }
+  else if (c) { c.className = "cond " + (F.ok ? "ok" : "bad"); c.textContent = F.ok ? `Condição: λ/(s·μ) = ${fmtN(F.u)} < 1 → sistema estável (${F.s === 1 ? "M/M/1" : "M/M/" + F.s})` : `λ/(s·μ) = ${fmtN(F.u)} ≥ 1 → a fila cresce sem parar. Aumente μ ou s.`; }
+  const r = document.getElementById("fres");
+  if (r && vazio) { r.innerHTML = ""; r.append(el("p", { class: "muted", text: "As medidas aparecem quando λ e μ estiverem preenchidos. Se o exercício não der λ e μ direto, use \"Achar λ e μ a partir de outros dados\"." })); }
+  else if (r) { r.innerHTML = ""; const base = ["rho", "P0", "NS", "NF", "TS", "TF", "tAt"].concat(F.s > 1 ? ["Pwait"] : []);
+    r.append(tbl(["Medida", "Fórmula aplicada", "Valor"], base.map(k => { const o = calcItem({ calculo: k }, F, ctx); return [ITENS[k].nome, el("td", { class: "fx", text: o.formula }), el("td", { class: "val", text: o.valor })]; })),
+      el("p", { class: "hint", text: "Confira: NS = λ·TS e NF = λ·TF (Lei de Little); TS = TF + 1/μ." })); }
+  const it = document.getElementById("fitems");
+  if (it) { it.innerHTML = "";
+    if (!d.itens.length) it.append(el("p", { class: "muted", text: "Adicione os itens que o exercício pede (a, b, c…)." }));
+    d.itens.forEach((x, i) => { const o = calcItem(x, F, ctx);
+      const ptxt = (ITENS[x.calculo]?.params || []).map(p => `${p} = ${x[p]}`).join(", ");
+      it.append(el("div", { class: "item" },
+        el("div", { class: "it-h" }, el("b", { text: (x.rotulo ? x.rotulo + ") " : "") + (x.pergunta || (ITENS[x.calculo]?.nome || "Item") + (ptxt ? ` (${ptxt})` : "")) }),
+          el("button", { type: "button", class: "x", "aria-label": "Remover item", onclick: () => { d.itens.splice(i, 1); upFilas(); } }, "×")),
+        o.formula ? el("div", { class: "fx", text: o.formula }) : null, el("div", { class: "val big", text: o.valor }))); }); }
+}
+
+function limparTudo() {
+  ["classico", "transbordo", "fluxo", "rota"].forEach(k => { clearProblem(k); TITLES[k] = "em branco"; });
+  S.filas = { l: "", m: "", s: 1, u: "h", CE: "", CA: "", H: 176, deriv: "", itens: [] }; TITLES.filas = "em branco";
+}
+function init() { limparTudo(); const h = (location.hash || "").slice(1); if (TABS.some(t => t.id === h)) TAB = h; renderTabs(); render(); }
+
+init();
+
+</script>
+</body>
+</html>
